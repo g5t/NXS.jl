@@ -1,3 +1,23 @@
+# With precompile turned on, the first pre-compilation of NXS takes a long time
+# since every module used gets individualy precompiled as well.
+# If any changes are then made to the NXS code the precompiled file becomes "stale"
+# and julia will automatically recompile when the module is next used.
+# The time to recompile is probably variable, but in simple testing was <24 seconds.
+# This time was similar to the "first" compilation time if the NXS.ji file was deleted
+# without touching the precompiled files for the submodules.
+# The precompilation saves time on later "using NXS" statements as the time to load 
+# the precompiled information is <9 seconds, compared to <17 seconds if not precompiled.
+# A significant fraction of this time seems to be loading PyPlot, which can't be precompiled
+# due to it being a thin wrapper for python's Matplotlib.pyplot.
+__precompile__() 
+"""
+NXS is a module to implement functionality relevant for the analysis
+of data from neutron (and x-ray) scattering instruments. In its current
+form it is mostly limited to triple-axis neutron scattering instruments
+but there is functionality (and defined instrument types) relevant to 
+diffractometers and multi-analyzer/multi-detector spectrometers. Further
+instrument types can be introduced without too much effort as needed.
+"""
 module NXS
     import Base: (==),(+),(-),(.+),(.-),(/),(*),(^),(./),(.*),(%),(<),(>),(<=),(>=),
     sqrt,cos,sin,tan,acos,asin,atan,atan2,log,log10,zero,one,prod,convert,
