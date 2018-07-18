@@ -1,0 +1,16 @@
+julia 0.6
+
+# unregistered packages
+Measureds
+Lattices
+PyPlot2TikZ
+SimpleNamedArrays
+Structs
+
+# META_BRANCH registered packages
+Colors
+OptimBase
+LsqFit
+Distributions
+FastGaussQuadrature
+SpecialFunctions

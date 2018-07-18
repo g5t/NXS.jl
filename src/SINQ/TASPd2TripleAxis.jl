@@ -1,0 +1,223 @@
+# Sample information, collimations, and orientation can be read from the datafile.
+# A more accurate TripleAxis object can be created when loading data files by first
+# setting appropriate keys in the TASPsetup dictionary, e.g., from your script files:
+#
+#         using NXS
+#         NXS.config["/tasp/analyzer/curvature/horizontal"]=NXS.flatBragg
+#         scanobject=TASPd(filename)
+#
+# would define TripleAxis objects for the points in the scan with flat analyzers (since
+# the TASP analyzer is only horizontally focusing to begin with)
+#
+# If one forgets to update alf[1-4] in SICS but changes the collimators, the correct
+# value(s) can be forced into the TripleAxis objects by, e.g.,
+#
+#        using NXS
+#        NXS.config["/tasp/collimators/monochromator/sample"]=40; # arc-minutes
+#        NXS.config["/tasp/collimators/sample/analyzer"]=80; # arc-minutes
+#        scanobject=TASPd(filename)
+#
+# if the collimators in place were -/40'/80'/- but the SICSserver had [any other values]
+#
+# A last alternative is to create your own equivalent defineTASP() function and pass it
+# to the TASPd constructor, e.g.,
+#
+# using NXS
+# function mydefineTASP()
+# ...
+# end
+# defaultTASPscanobject = TASPd(filename)
+# modifiedTASPscanobject= TASPd(filename,mydefineTASP)
+
+# config and get/check setup functions defined in Config.jl
+
+function defaultconfigTASP()
+    src=Struct(); mono=Struct(); moni=Struct(); ana=Struct();
+    det=Struct(); dist=Struct(); coll=Struct(); tasp=Struct()
+    src[:width]=30.
+    src[:height]=120.
+    #
+    mono[:mosaic]=pi/270. # 40' in radian
+    mono[:width]=3*50. # 3×50mm crystals wide
+    mono[:height]=5*25.+4*1. # 5×25mm crystals + 4×1mm gaps tall
+    mono[:depth]=2. # 2mm thick crystals
+    mono["/curvature/horizontal"]=flatBragg
+    mono["/curvature/vertical"]=verticallyCurvedBragg
+    #
+    moni[:width]=50.
+    moni[:height]=160.
+    #
+    ana[:mosaic]=pi/270. # 40' in radian
+    ana[:width]=7*25.+6*1. # 7×25mm crystals plus 6×1mm gaps wide
+    ana[:height]=3*50. # 3×50mm crystals tall
+    ana[:depth]=2. # 2mm thick
+    ana["/curvature/horizontal"]=horizontalyCurvedBragg
+    ana["/curvature/vertical"]=flatBragg
+    #
+    det[:width] = 30. #mm, most common width, though variable with often-used values 10, 20, 30, 50 mm
+    det[:height]=160. #mm, height of standard detector mask
+    #
+    dist[:source_monochromator] = 800.
+    dist[:monochromator_sample] =1400.
+    dist[:sample_analyzer]      =1150.
+    dist[:analyzer_detector]    =1100.
+    dist[:monochromator_monitor]=1000.
+    #
+    coll[:source_monochromator]= -2.
+    coll[:monochromator_sample]=coll[:sample_analyzer]=coll[:analyzer_detector]=800.
+    #
+    tasp[:source]=src; tasp[:monochromator]=mono; tasp[:monitor]=moni;
+    tasp[:analyzer]=ana;  tasp[:detector]=det;       tasp[:distances]=dist;
+    tasp["/collimators/horizontal"]=coll; tasp["/collimators/vertical"]=coll
+    return tasp
+end
+reset_config_TASP()=config[:tasp]=defaultconfigTASP()
+reset_config_TASP()
+
+# A general function to create a TripleAxis object representative of a typical TASP setup.
+function defineTASP(a::TASPd)
+    deft=defaultconfigTASP()
+    tasp=config[:tasp]
+    #
+    src=get(tasp,:source,Struct())
+    if !isa(src,Source)
+        def=deft[:source]
+        src=Source(get(src,:width,def[:width]),get(src,:height,def[:height]))
+    end
+    mono=get(tasp,:monochromator,Struct())
+    if !isa(mono,Bragg)
+        def=deft[:monochromator]
+        tau   =get(mono,:tau   ,2pi/get(a.parameters,"dm",-1))
+        named =get(mono,:name  ,tauname(tau))
+        sense =get(mono,:sense ,get(a.parameters,"sm",-1))
+        mosaic=get(mono,:mosaic,def[:mosaic])
+        if isa(mosaic,Struct)
+            horz=get(mosaic,"/horizontal",def[:mosaic])
+            vert=get(mosaic,"/vertical"  ,def[:mosaic])
+            mosaic=[horz,vert]
+        end
+        isa(mosaic,Array) || (mosaic=[mosaic,mosaic])
+        width =get(mono,:width,def[:width])
+        height=get(mono,:height,def[:height])
+        depth =get(mono,:depth,def[:depth])
+        extent=[width,height,depth] # overall w×h×t mm³; will be converted to second moments automatically
+        cfh=get(mono,"/curvature/horizontal",def["/curvature/horizontal"])
+        cfv=get(mono,"/curvature/vertical"  ,def["/curvature/vertical"]  )
+        mono=Bragg(tau,named,sense,mosaic,extent,[cfh,cfv])
+    end
+    moni=get(tasp,:monitor,Struct())
+    if !isa(moni,Detector)
+        def=deft[:monitor]
+        moni=Detector(get(moni,:width,def[:width]),get(moni,:height,def[:height]))
+    end
+    sample=get(tasp,:sample,Struct())
+    if !isa(sample,Sample)
+        o1=get(sample,"/orient/x",getMultiple(a.parameters,["ax","ay","az"],1))
+        o2=get(sample,"/orient/y",getMultiple(a.parameters,["bx","by","bz"],1))
+        if haskey(sample,:crystal) && isa(sample[:crystal],Crystal)
+            crystal=sample[:crystal]
+        else
+            ld=get(sample,"/lattice/lengths",getMultiple(a.parameters,["as","bs","cs"],2pi))
+            la=get(sample,"/lattice/angles", getMultiple(a.parameters,["aa","bb","cc"],90.))
+            crystal=Crystal(ld...,la...)
+        end
+        mosaic=get(sample,:mosaic,Struct())
+        isa(mosaic,Struct) && (mosaic=[get(mosaic,:horizontal,0.),get(mosaic,:vertical,0.)])
+        isa(mosaic,Number) && (mosaic=[mosaic,mosaic])
+        sense=get(sample,:sense,get(a.parameters,"ss",1))
+        if haskey(sample,:geometry)&&isa(sample[:geometry],Lattices.SampleMesh)
+            invAbsLen=get(sample,:inverse_absorption_length,0.)
+            sample=Sample(crystal,o1,o2,sample[:geometry],mosaic,sense,invAbsLen)
+        else
+            shape=get(sample,:shape,Struct())
+            if isa(shape,Struct)
+                xx=get(shape,:x,100/12.) # <x*x> for a 10 mm cube
+                yy=get(shape,:y,100/12.) # <y*y> for a 10 mm cube
+                zz=get(shape,:z,100/12.) # <z*z> for a 10 mm cube
+                shape=[xx,yy,zz]
+            end
+            isa(shape,Vector) && (shape=diagm(shape))
+            shape=convert.(SecondMoment,shape) # a non-op if eltype(shape)==SecondMoment already
+            sample=Sample(crystal,o1,o2,shape,mosaic,sense)
+        end
+    end
+    analyzer=get(tasp,:analyzer,Struct())
+    if !isa(analyzer,Bragg)
+        def=deft[:analyzer]
+        tau   =get(analyzer,:tau   ,2pi/get(a.parameters,"da",-1))
+        named =get(analyzer,:name  ,tauname(tau))
+        sense =get(analyzer,:sense ,get(a.parameters,"sa",-1))
+        mosaic=get(analyzer,:mosaic,def[:mosaic])
+        if isa(mosaic,Struct)
+            horz=get(mosaic,"/horizontal",def[:mosaic])
+            vert=get(mosaic,"/vertical"  ,def[:mosaic])
+            mosaic=[horz,vert]
+        end
+        isa(mosaic,Array) || (mosaic=[mosaic,mosaic])
+        width =get(analyzer,:width,def[:width])
+        height=get(analyzer,:height,def[:height])
+        depth =get(analyzer,:depth,def[:depth])
+        extent=[width,height,depth] # overall w×h×t mm³; will be converted to second moments automatically
+        cfh=get(analyzer,"/curvature/horizontal",def["/curvature/horizontal"])
+        cfv=get(analyzer,"/curvature/vertical"  ,def["/curvature/vertical"]  )
+        analyzer=Bragg(tau,named,sense,mosaic,extent,[cfh,cfv])
+    end
+    det=get(tasp,:detector,Struct())
+    if !isa(det,Detector)
+        def=deft[:monitor]
+        det=Detector(get(det,:width,def[:width]),get(det,:height,def[:height]))
+    end
+    dist=get(tasp,:distances,Struct())
+    if isa(dist,Struct)
+        def=deft[:distances]
+        s2m=get(dist,:source_monochromator,def[:source_monochromator])
+        m2s=get(dist,:monochromator_sample,def[:monochromator_sample])
+        s2a=get(dist,:sample_analyzer,def[:sample_analyzer])
+        a2d=get(dist,:analyzer_detector,def[:analyzer_detector])
+        m2m=get(dist,:monochromator_monitor,def[:monochromator_monitor])
+        dist=[s2m,m2s,s2a,a2d,m2m]
+    end
+    isa(dist,Array) || error("config[\"/tasp/distances\"] should be either a Struct or an array of the five distances not $(typeof(dist))")
+    isa(dist,Vector)||(dist=vec(dist))
+    hcoll=get(tasp,"/collimators/hoizontal",Struct())
+    if isa(hcoll,Struct)
+        def=deft["/collimators/horizontal"]
+        α1=get(hcoll,:source_monochromator,def[:source_monochromator])
+        α2=get(hcoll,:monochromator_sample,def[:monochromator_sample])
+        α3=get(hcoll,:sample_analyzer,def[:sample_analyzer])
+        α4=get(hcoll,:analyzer_detector,def[:analyzer_detector])
+        hcoll=[α1,α2,α3,α4]
+    end
+    isa(hcoll,Array)||error("config[\"/tasp/collimators/horizontal\"] should be either a struct or an array of the four collimations not $(typeof(hcoll))")
+    isa(hcoll,Vector)||(hcoll=vec(hcoll))
+    vcoll=get(tasp,"/collimators/vertical",Struct())
+    if isa(vcoll,Struct)
+        def=deft["/collimators/vertical"]
+        β1=get(vcoll,:source_monochromator,def[:source_monochromator])
+        β2=get(vcoll,:monochromator_sample,def[:monochromator_sample])
+        β3=get(vcoll,:sample_analyzer,def[:sample_analyzer])
+        β4=get(vcoll,:analyzer_detector,def[:analyzer_detector])
+        vcoll=[β1,β2,β3,β4]
+    end
+    isa(vcoll,Array)||error("config[\"/tasp/collimators/vertical\"] should be either a struct or an array of the four collimations not $(typeof(vcoll))")
+    isa(vcoll,Vector)||(vcoll=vec(vcoll))
+    # determine the magnitude of the fixed incident or final energy
+    # look for a value in fixed/k, fixed/kf, or fixed/ki defaulting to value in scan file
+    f=get(tasp,:fixed,Struct())
+    fixedk=get(f,:k,get(f,:kf,get(f,:ki,get(a.parameters,"kfix",2.55))))
+    # allow for overriding fixed-k by a defined fixed-E, otherwise use fixed-k to calculate fixed-E
+    fixede=get(f,:ei,get(f,:ef,get(f,:energy,ħ²2mₙ*fixedk^2)))
+
+    # determine if ki or kf is fixed:
+    fx=2!=get(a.parameters,"fx",2) # a.parameters[fx]==2 says kf-fixed; otherwise ki-fixed
+    # so, if this fx is true, then the TASMAD file says ki is fixed
+    fi=haskey(f,:ki)&&isa(f[:ki],Real) # ki-fixed if true <--- possible override flags
+    ff=haskey(f,:kf)&&isa(f[:kf],Real) # kf-fixed if true <-/
+    # only override if (true,false) or (false,true) not (true,true) or (false,false)
+    is_ki_fixed= xor(fi,ff) ? fi : fx # if xor(fi,ff); fi; else; fx; end
+
+    tas=TripleAxis(src,mono,moni,sample,analyzer,det,dist,hcoll,vcoll,fixede,is_ki_fixed)
+    return tas
+end
+
+fillinstrument!(a::TASPd)=fillTASinstrument!(a)
