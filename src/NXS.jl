@@ -9,7 +9,7 @@
 # the precompiled information is <9 seconds, compared to <17 seconds if not precompiled.
 # A significant fraction of this time seems to be loading PyPlot, which can't be precompiled
 # due to it being a thin wrapper for python's Matplotlib.pyplot.
-__precompile__() 
+__precompile__(false) # XXX !!! precompile causes a Seg. Fault for *some* plotting routines?!?!?
 """
 NXS is a module to implement functionality relevant for the analysis
 of data from neutron (and x-ray) scattering instruments. In its current
