@@ -78,7 +78,4 @@ function RITA2d(filename::AbstractString,defINST::Function=defineRITA2)
 end
 RITA2d{T<:AbstractString}(fn::AbstractArray{T},TASdef::Function=defineRITA2)=map(x->RITA2d(x,TASdef),fn)
 
-RITA2path(no::Integer,path="/hzb/RITA2/data")=path*"/"*pad(no,6)
-RITA2path(no::AbstractArray,o...;k...)=RITA2path.(no,o...;k...)
-
 include("RITA2d2TripleAxis.jl")

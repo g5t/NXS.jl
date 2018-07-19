@@ -79,7 +79,7 @@ function IN22d(filename::AbstractString,defINST::Function=defineIN22)
 end
 IN22d{T<:AbstractString}(fn::AbstractArray{T},TASdef::Function=defineIN22)=map(x->IN22d(x,TASdef),fn)
 
-IN22path(no::Integer,path=".")=path*"/"*pad(no,6)
+IN22path(no::Integer,path=".")=joinpath(path,pad(no,6))
 IN22path(no::AbstractArray,o...;k...)=IN22path.(no,o...;k...)
 
 include("IN22d2TripleAxis.jl")

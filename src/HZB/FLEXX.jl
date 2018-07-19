@@ -78,7 +78,7 @@ function FLEXXd(filename::AbstractString,defINST::Function=defineFLEXX)
 end
 FLEXXd{T<:AbstractString}(fn::AbstractArray{T},TASdef::Function=defineFLEXX)=map(x->FLEXXd(x,TASdef),fn)
 
-FLEXXpath(no::Integer,path="/hzb/flexx/data")=path*"/"*pad(no,6)
+FLEXXpath(no::Integer,path="/hzb/flexx/data")=joinpath(path,*pad(no,6))
 FLEXXpath(no::AbstractArray,o...;k...)=FLEXXpath.(no,o...;k...)
 loadFLEXX(o...;k...)=FLEXXd(FLEXXpath(o...;k...))
 
